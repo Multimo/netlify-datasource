@@ -2,35 +2,59 @@ package plugin
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"math/rand"
-	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
 	"github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
-	"github.com/grafana/grafana-plugin-sdk-go/data"
+	"github.com/grafana/grafana-plugin-sdk-go/backend/resource/httpadapter"
+
+	"github.com/grafana/netlify-datasource/pkg/plugin/client"
+	"github.com/grafana/netlify-datasource/pkg/plugin/models"
+	"github.com/grafana/netlify-datasource/pkg/plugin/query"
+	"github.com/grafana/netlify-datasource/pkg/plugin/resources"
 )
+
+// Datasource is an example datasource which can respond to data queries, reports
+// its health and has streaming skills.
+type Datasource struct {
+	client       client.Client
+	queryHandler query.QueryHandler
+	backend.CallResourceHandler
+}
 
 // Make sure Datasource implements required interfaces. This is important to do
 // since otherwise we will only get a not implemented error response from plugin in
 // runtime. In this example datasource instance implements backend.QueryDataHandler,
 // backend.CheckHealthHandler interfaces. Plugin should not implement all these
 // interfaces - only those which are required for a particular task.
+//
+// type assertion to validate that the datasource implements the interface
 var (
 	_ backend.QueryDataHandler      = (*Datasource)(nil)
 	_ backend.CheckHealthHandler    = (*Datasource)(nil)
 	_ instancemgmt.InstanceDisposer = (*Datasource)(nil)
+	// _ backend.CallResourceHandler   = (*resources.ResourcesHandler.Router)(nil)
 )
 
 // NewDatasource creates a new datasource instance.
-func NewDatasource(_ context.Context, _ backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
-	return &Datasource{}, nil
-}
+func NewDatasource(ctx context.Context, config backend.DataSourceInstanceSettings) (instancemgmt.Instance, error) {
+	settings, err := models.LoadSettings(ctx, config)
+	if err != nil {
+		return nil, err
+	}
 
-// Datasource is an example datasource which can respond to data queries, reports
-// its health and has streaming skills.
-type Datasource struct{}
+	client := client.NewClient(settings)
+	query := query.NewQueryHandler(client)
+
+	resourcesHandler := resources.NewResourcesHandler(client)
+
+	ds := Datasource{
+		client:              client,
+		queryHandler:        query,
+		CallResourceHandler: httpadapter.New(resourcesHandler.Router),
+	}
+
+	return &ds, nil
+}
 
 // Dispose here tells plugin SDK that plugin wants to clean up resources when a new instance
 // created. As soon as datasource settings change detected by SDK old datasource instance will
@@ -44,49 +68,7 @@ func (d *Datasource) Dispose() {
 // The QueryDataResponse contains a map of RefID to the response for each query, and each response
 // contains Frames ([]*Frame).
 func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
-	// create response struct
-	response := backend.NewQueryDataResponse()
-
-	// loop over queries and execute them individually.
-	for _, q := range req.Queries {
-		res := d.query(ctx, req.PluginContext, q)
-
-		// save the response in a hashmap
-		// based on with RefID as identifier
-		response.Responses[q.RefID] = res
-	}
-
-	return response, nil
-}
-
-type queryModel struct{}
-
-func (d *Datasource) query(_ context.Context, pCtx backend.PluginContext, query backend.DataQuery) backend.DataResponse {
-	var response backend.DataResponse
-
-	// Unmarshal the JSON into our queryModel.
-	var qm queryModel
-
-	err := json.Unmarshal(query.JSON, &qm)
-	if err != nil {
-		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("json unmarshal: %v", err.Error()))
-	}
-
-	// create data frame response.
-	// For an overview on data frames and how grafana handles them:
-	// https://grafana.com/developers/plugin-tools/introduction/data-frames
-	frame := data.NewFrame("response")
-
-	// add fields.
-	frame.Fields = append(frame.Fields,
-		data.NewField("time", nil, []time.Time{query.TimeRange.From, query.TimeRange.To}),
-		data.NewField("values", nil, []int64{10, 20}),
-	)
-
-	// add the frames to the response.
-	response.Frames = append(response.Frames, frame)
-
-	return response
+	return d.queryHandler.HandleQueries(ctx, req)
 }
 
 // CheckHealth handles health checks sent from Grafana to the plugin.
@@ -97,9 +79,15 @@ func (d *Datasource) CheckHealth(_ context.Context, req *backend.CheckHealthRequ
 	var status = backend.HealthStatusOk
 	var message = "Data source is working"
 
-	if rand.Int()%2 == 0 {
-		status = backend.HealthStatusError
-		message = "randomized error"
+	// TODO:
+	// validate settings on health check
+
+	_, err := d.client.GetSites()
+	if err != nil {
+		return &backend.CheckHealthResult{
+			Status:  backend.HealthStatusError,
+			Message: err.Error(),
+		}, nil
 	}
 
 	return &backend.CheckHealthResult{

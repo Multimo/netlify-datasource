@@ -4,6 +4,7 @@
   "name": "Netlify-Datasource",
   "id": "grafana-netlify-datasource",
   "metrics": true,
+  "annotations": true,
   "backend": true,
   "executable": "gpx_netlify_datasource",
   "info": {
@@ -11,7 +12,9 @@
     "author": {
       "name": "Grafana"
     },
-    "keywords": ["datasource"],
+    "keywords": [
+      "datasource"
+    ],
     "logos": {
       "small": "img/logo.svg",
       "large": "img/logo.svg"
