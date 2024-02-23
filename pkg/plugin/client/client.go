@@ -172,7 +172,7 @@ func (c Client) GetDeployments(siteId string) (DeploysResponse, error) {
 	return deploys, nil
 }
 
-type BuildsResponse []struct {
+type Build struct {
 	ID        string    `json:"id"`
 	DeployID  string    `json:"deploy_id"`
 	Sha       string    `json:"sha"`
@@ -180,6 +180,8 @@ type BuildsResponse []struct {
 	Error     string    `json:"error"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+type BuildsResponse []Build
 
 type MapResponse = []map[string]any
 

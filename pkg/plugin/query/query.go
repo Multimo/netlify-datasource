@@ -124,41 +124,44 @@ func (q QueryHandler) HandleBuildsQuery(ctx context.Context, siteIds []string, s
 		builds = append(builds, r...)
 	}
 
+	new_buildz := make(client.BuildsResponse, 0, len(builds))
 	// ID Sha CreatedAt State
-	// if len(selectedFields) > 0 {
-	// 	for _, build := range builds {
-	// 		buildValue := reflect.ValueOf(build).Elem()
+	if len(selectedFields) > 2 {
+		for _, build := range builds {
+			buildValue := reflect.ValueOf(&build).Elem()
 
-	// 		// for _, v := range selectedFields {
-	// 		// 	fieldValue := buildValue.FieldByName(v)
-	// 		// 	if !fieldValue.IsValid() {
-	// 		// 		continue
-	// 		// 	}
+			// for _, v := range selectedFields {
+			// 	fieldValue := buildValue.FieldByName(v)
+			// 	if !fieldValue.IsValid() {
+			// 		continue
+			// 	}
 
-	// 		// 	fieldValue.Set(reflect.Zero(fieldValue.Type()))
-	// 		// }
+			// 	fieldValue.Set(reflect.Zero(fieldValue.Type()))
+			// }
 
-	// 		for i := 0; i < buildValue.NumField(); i++ {
-	// 			fieldName := buildValue.Type().Field(i)
+			for i := 0; i < buildValue.NumField(); i++ {
+				fieldName := buildValue.Type().Field(i)
 
-	// 			// Check if the field should be kept
-	// 			if !contains(selectedFields, fieldName.Name) {
-	// 				// Reset the field's value to its zero value
-	// 				fieldValue := buildValue.Field(i)
-	// 				fieldValue.Set(reflect.Zero(fieldValue.Type()))
-	// 			}
-	// 		}
-	// 	}
+				// Check if the field should be kept
+				if !contains(selectedFields, fieldName.Name) {
+					// Reset the field's value to its zero value
+					fieldValue := buildValue.Field(i)
+					fieldValue.Set(reflect.Zero(fieldValue.Type()))
+				}
+			}
+			new_buildz = append(new_buildz, buildValue.Interface().(client.Build))
+		}
+
 	// }
 
-	backend.Logger.Info("HandleBuildsQuery", "len", len(res), "builds", builds)
+	backend.Logger.Info("HandleBuildsQuery", "len", len(res), "buildz", builds)
+
+	
 
 	dataFrames, err := framestruct.ToDataFrame("builds", builds)
 	if err != nil {
 		return backend.ErrDataResponse(backend.StatusBadRequest, fmt.Sprintf("failed Builds to frame conversion: %v", err.Error()))
 	}
-
-	// dataFrames.
 
 	response.Frames = append(response.Frames, dataFrames)
 
